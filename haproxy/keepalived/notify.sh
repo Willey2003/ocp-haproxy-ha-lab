@@ -5,4 +5,7 @@
 #   journalctl -t keepalived-notify
 /usr/bin/logger -t keepalived-notify -p daemon.notice \
   "VRRP $1 $2 changed to $3 (priority ${4:-n/a}) on $(hostname -s)"
+# Optional hook: the failover/monitoring step installs this to export VRRP
+# state as metrics. Skipped when not present.
+[ -x /usr/local/libexec/keepalived/notify-metrics.sh ] && /usr/local/libexec/keepalived/notify-metrics.sh "$@"
 exit 0
