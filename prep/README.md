@@ -64,6 +64,12 @@ not hold yet, so failover needs no HAProxy restart. Also raises accept backlogs.
 | 8405/tcp | HAProxy Prometheus exporter | `MGMT_CIDR` only |
 | VRRP (IP proto 112) | keepalived adverts | lb1 and lb2 only |
 
+If in-cluster Prometheus scrapes the LBs (8405 for HAProxy, 9100 for
+node_exporter), it connects from the machine network, not `MGMT_CIDR`. This
+script does not open those ports to the machine network; the monitoring
+installer in this repo opens them to the CIDRs you give it, so pass it
+`MACHINE_CIDR` as well.
+
 Ports are grouped into named firewalld services (`ocp-api`, `ocp-mcs`,
 `haproxy-admin`) so `firewall-cmd --list-all` reads clearly. Set `RESTRICT_SSH=1`
 to also limit SSH to the management network (confirm your own access first).
