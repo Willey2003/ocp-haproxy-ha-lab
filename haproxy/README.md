@@ -25,9 +25,8 @@ about 4 seconds.
 | 22623 | Machine Config    | 3 masters (+bootstrap) | TCP connect                                   |
 | 443   | Ingress HTTPS     | 2 infra nodes          | `GET /healthz/ready` on router port 1936      |
 | 80    | Ingress HTTP      | 2 infra nodes          | `GET /healthz/ready` on router port 1936      |
-| 9000  | Stats page        | local                  | `/stats` (basic auth)                         |
+| 9000  | Stats page        | local                  | `/stats` (basic auth), `/healthz` liveness for keepalived |
 | 8405  | Prometheus metrics| local                  | `/metrics`                                    |
-| 8081  | LB liveness (127.0.0.1 only) | local       | `/healthz`, used by keepalived                |
 
 Checks run every 2s; a server is marked down after 2 failures and back up
 after 3 passes. Ingress is TLS passthrough (the routers terminate TLS) with
@@ -43,7 +42,6 @@ open for up to 1 hour so `oc` watches and websockets are not cut.
 | `keepalived/keepalived-lb2.conf` | `/etc/keepalived/keepalived.conf` on lb2 | BACKUP |
 | `keepalived/check_haproxy.sh` | `/etc/keepalived/` on both | VRRP health check |
 | `keepalived/notify.sh` | `/etc/keepalived/` on both | logs state changes to the journal |
-| `sysctl/90-haproxy.conf` | `/etc/sysctl.d/` on both | lets the standby bind the VIP |
 | `validate.sh` | run locally | `haproxy -c` + `keepalived -t` |
 
 ## Before you deploy: replace placeholders
@@ -70,35 +68,30 @@ sed -i 's/192\.168\.100\./10.10.20./g' haproxy.cfg keepalived/*.conf
 
 ## Install (on each LB, as root)
 
+Run the host prep first (`../prep/`): it sets `ip_nonlocal_bind` so the
+standby can bind the VIP, opens firewalld for the LB ports and VRRP, and
+labels the HAProxy ports for SELinux.
+
 ```bash
-dnf install -y haproxy keepalived curl policycoreutils-python-utils
+dnf install -y haproxy keepalived curl
+../prep/scripts/prep-lb.sh          # sysctl + firewalld + SELinux
 
 # configs
 install -m 644 haproxy.cfg /etc/haproxy/haproxy.cfg
 install -m 644 keepalived/keepalived-lb1.conf /etc/keepalived/keepalived.conf   # lb2: keepalived-lb2.conf
 install -m 755 keepalived/check_haproxy.sh keepalived/notify.sh /etc/keepalived/
-install -m 644 sysctl/90-haproxy.conf /etc/sysctl.d/ && sysctl --system
 
-# SELinux: let HAProxy bind 6443/22623/9000/8405/8081 and connect to any backend
-# port, and let keepalived run the check/notify scripts unconfined.
-# (The full SELinux prep lives in ../prep/selinux/.)
-setsebool -P haproxy_connect_any 1
+# let keepalived run its check/notify scripts under SELinux
 chcon -t keepalived_unconfined_script_exec_t /etc/keepalived/check_haproxy.sh /etc/keepalived/notify.sh
 
 haproxy -c -f /etc/haproxy/haproxy.cfg
 systemctl enable --now haproxy keepalived
 ```
 
-Firewall: the LBs need 6443, 22623, 80 and 443/tcp open to clients, 9000
-and 8405/tcp open to the management network, and VRRP (IP protocol 112)
-allowed between lb1 and lb2. The full rules are in `../prep/firewall/`.
-Minimal version if you are testing without that step:
-
-```bash
-firewall-cmd --permanent --add-port={6443,22623,80,443,9000,8405}/tcp
-firewall-cmd --permanent --add-rich-rule='rule protocol value="vrrp" accept'
-firewall-cmd --reload
-```
+Ports the LBs need: 6443, 80 and 443/tcp for clients, 22623/tcp for the
+node network, 9000 and 8405/tcp for the management network, and VRRP
+(IP protocol 112) between lb1 and lb2. `../prep/firewall/lb-firewalld.sh`
+sets exactly these.
 
 ## Install-time bootstrap node
 
@@ -111,7 +104,7 @@ again and `systemctl reload haproxy`.
 
 ```bash
 ip -br addr show ens192                 # VIP present on exactly one LB
-curl -s http://127.0.0.1:8081/healthz    # 200 while HAProxy is alive
+curl -s http://127.0.0.1:9000/healthz    # 200 while HAProxy is alive
 curl -su admin:changeme http://<vip>:9000/stats
 curl -s http://<lb>:8405/metrics | head
 echo "show servers state" | socat stdio /var/lib/haproxy/stats
