@@ -1,0 +1,30 @@
+# Install-time alternative (UPI / agent-based installs).
+# After `openshift-install create manifests`, copy this file into
+# <install-dir>/manifests/ so routers land on infra nodes from day one.
+# You still need to label (and later taint) the infra nodes once they join,
+# and apply manifests/00-infra-machineconfigpool.yaml.
+#
+# HostNetwork is the correct strategy when an external HAProxy fronts
+# 80/443 on the infra nodes and health-checks the router on port 1936.
+apiVersion: operator.openshift.io/v1
+kind: IngressController
+metadata:
+  name: default
+  namespace: openshift-ingress-operator
+spec:
+  replicas: 2
+  endpointPublishingStrategy:
+    type: HostNetwork
+  nodePlacement:
+    nodeSelector:
+      matchLabels:
+        node-role.kubernetes.io/infra: ""
+    tolerations:
+      - key: node-role.kubernetes.io/infra
+        operator: Equal
+        value: reserved
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/infra
+        operator: Equal
+        value: reserved
+        effect: NoExecute
