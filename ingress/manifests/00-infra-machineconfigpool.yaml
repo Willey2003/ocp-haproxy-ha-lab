@@ -1,0 +1,26 @@
+# Dedicated MachineConfigPool for infra nodes.
+#
+# Infra nodes keep the worker label and inherit every worker MachineConfig
+# (the selector below matches both roles). A node that carries the worker
+# label plus one custom role label belongs to the custom pool, so the two
+# infra nodes move out of the "worker" pool and into "infra". That lets you
+# pause/roll infra updates independently of application workers.
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  name: infra
+  labels:
+    pools.operator.machineconfiguration.openshift.io/infra: ""
+spec:
+  machineConfigSelector:
+    matchExpressions:
+      - key: machineconfiguration.openshift.io/role
+        operator: In
+        values:
+          - worker
+          - infra
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/infra: ""
+  # Roll one infra node at a time so one router is always serving.
+  maxUnavailable: 1

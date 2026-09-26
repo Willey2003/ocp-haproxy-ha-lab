@@ -1,0 +1,25 @@
+# Merge patch for the default IngressController.
+# Apply with:
+#   oc patch ingresscontroller/default -n openshift-ingress-operator \
+#     --type=merge --patch-file=manifests/10-ingresscontroller-infra-placement.yaml
+#
+# - replicas: 2, one router per infra node. The operator adds pod
+#   anti-affinity for HostNetwork routers, so two replicas never share a node.
+# - nodeSelector pins routers to infra nodes only.
+# - tolerations let routers run on the tainted infra nodes (the taint is
+#   applied AFTER this patch has rolled out; see scripts/setup-infra-ingress.sh).
+spec:
+  replicas: 2
+  nodePlacement:
+    nodeSelector:
+      matchLabels:
+        node-role.kubernetes.io/infra: ""
+    tolerations:
+      - key: node-role.kubernetes.io/infra
+        operator: Equal
+        value: reserved
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/infra
+        operator: Equal
+        value: reserved
+        effect: NoExecute
