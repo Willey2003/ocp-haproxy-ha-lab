@@ -1,0 +1,43 @@
+; ---------------------------------------------------------------------------
+; Forward zone for ${CLUSTER_DOMAIN}
+; Rendered from db.cluster.zone.tmpl by dns/render-zones.sh. Edit inventory.env,
+; not the rendered file. Bump SERIAL on every change (render script does this).
+; ---------------------------------------------------------------------------
+$TTL 300
+@   IN  SOA  ns1.${CLUSTER_DOMAIN}. hostmaster.${CLUSTER_DOMAIN}. (
+        ${SERIAL} ; serial (YYYYMMDDnn)
+        3600      ; refresh
+        900       ; retry
+        1209600   ; expire
+        300 )     ; negative-cache TTL
+
+    IN  NS   ns1.${CLUSTER_DOMAIN}.
+    IN  NS   ns2.${CLUSTER_DOMAIN}.
+
+ns1         IN  A   ${DNS1_IP}
+ns2         IN  A   ${DNS2_IP}
+
+; --- Load balancers --------------------------------------------------------
+; api, api-int and *.apps all resolve to the keepalived virtual IP, never to
+; an individual LB, so a failover needs no DNS change.
+${LB1_NAME}         IN  A   ${LB1_IP}
+${LB2_NAME}         IN  A   ${LB2_IP}
+lb-vip      IN  A   ${LB_VIP}
+
+; Kubernetes API (external clients, oc/kubectl, console OAuth)
+api         IN  A   ${LB_VIP}
+; Internal API + Machine Config Server (22623). Nodes use this during
+; ignition. In a split-horizon setup, publish api-int ONLY in the internal view.
+api-int     IN  A   ${LB_VIP}
+
+; Default ingress wildcard: console, oauth, and every application Route.
+*.apps      IN  A   ${LB_VIP}
+
+; --- Cluster nodes ---------------------------------------------------------
+; Each node's A record must match its PTR, or RHCOS picks the wrong hostname.
+${BOOTSTRAP_NAME}   IN  A   ${BOOTSTRAP_IP}   ; delete after install completes
+${MASTER0_NAME}     IN  A   ${MASTER0_IP}
+${MASTER1_NAME}     IN  A   ${MASTER1_IP}
+${MASTER2_NAME}     IN  A   ${MASTER2_IP}
+${INFRA0_NAME}      IN  A   ${INFRA0_IP}
+${INFRA1_NAME}      IN  A   ${INFRA1_IP}
