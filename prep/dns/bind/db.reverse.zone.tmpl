@@ -1,0 +1,23 @@
+; ---------------------------------------------------------------------------
+; Reverse zone for ${MACHINE_CIDR}  (${REVERSE_ZONE})
+; RHCOS nodes set their hostname from the PTR record, so every node needs one.
+; Do NOT add PTRs for api / api-int / *.apps (the VIP gets lb-vip only).
+; ---------------------------------------------------------------------------
+$TTL 300
+@   IN  SOA  ns1.${CLUSTER_DOMAIN}. hostmaster.${CLUSTER_DOMAIN}. (
+        ${SERIAL} 3600 900 1209600 300 )
+
+    IN  NS   ns1.${CLUSTER_DOMAIN}.
+    IN  NS   ns2.${CLUSTER_DOMAIN}.
+
+${DNS1_OCTET}   IN  PTR  ns1.${CLUSTER_DOMAIN}.
+${DNS2_OCTET}   IN  PTR  ns2.${CLUSTER_DOMAIN}.
+${LB_VIP_OCTET}  IN  PTR  lb-vip.${CLUSTER_DOMAIN}.
+${LB1_OCTET}  IN  PTR  ${LB1_NAME}.${CLUSTER_DOMAIN}.
+${LB2_OCTET}  IN  PTR  ${LB2_NAME}.${CLUSTER_DOMAIN}.
+${BOOTSTRAP_OCTET}  IN  PTR  ${BOOTSTRAP_NAME}.${CLUSTER_DOMAIN}.
+${MASTER0_OCTET}  IN  PTR  ${MASTER0_NAME}.${CLUSTER_DOMAIN}.
+${MASTER1_OCTET}  IN  PTR  ${MASTER1_NAME}.${CLUSTER_DOMAIN}.
+${MASTER2_OCTET}  IN  PTR  ${MASTER2_NAME}.${CLUSTER_DOMAIN}.
+${INFRA0_OCTET}  IN  PTR  ${INFRA0_NAME}.${CLUSTER_DOMAIN}.
+${INFRA1_OCTET}  IN  PTR  ${INFRA1_NAME}.${CLUSTER_DOMAIN}.

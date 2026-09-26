@@ -1,0 +1,22 @@
+// ---------------------------------------------------------------------------
+// Include from /etc/named.conf:   include "/etc/named/ocp-zones.conf";
+// Primary server. For the secondary, change "type primary" to "type secondary"
+// and add:  primaries { ${DNS1_IP}; };
+// ---------------------------------------------------------------------------
+acl "ocp-clients" { ${MACHINE_CIDR}; ${MGMT_CIDR}; localhost; };
+
+zone "${CLUSTER_DOMAIN}" IN {
+    type primary;
+    file "/var/named/db.${CLUSTER_DOMAIN}";
+    allow-query     { ocp-clients; };
+    allow-transfer  { ${DNS2_IP}; };
+    notify yes;
+};
+
+zone "${REVERSE_ZONE}" IN {
+    type primary;
+    file "/var/named/db.${REVERSE_ZONE}";
+    allow-query     { ocp-clients; };
+    allow-transfer  { ${DNS2_IP}; };
+    notify yes;
+};
