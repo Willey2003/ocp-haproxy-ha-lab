@@ -1,0 +1,11 @@
+# Turns on monitoring for user-defined projects, which is what scrapes the LBs
+# from inside the cluster. If cluster-monitoring-config already exists, merge
+# enableUserWorkload into its config.yaml instead of applying this over it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    enableUserWorkload: true

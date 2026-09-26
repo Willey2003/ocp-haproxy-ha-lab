@@ -1,0 +1,135 @@
+# Alert rules for the HAProxy + keepalived load balancer pair.
+#
+# Source of truth. openshift/prometheusrule.yaml is generated from this file by
+# ../render-prometheusrule.sh; standalone Prometheus loads it directly.
+#
+# Expected scrape jobs:
+#   job="haproxy"  HAProxy exporter on each LB, :8405/metrics
+#   job="lb-node"  node_exporter on each LB, :9100/metrics
+#
+# Metric names follow the HAProxy 2.4+ built-in exporter.
+groups:
+  - name: lb-scrape
+    rules:
+      - alert: LBMetricsDown
+        expr: up{job=~"haproxy|lb-node"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cannot scrape {{ $labels.job }} on {{ $labels.instance }}"
+          description: "The LB or its exporter is down, or the firewall blocks the monitoring host. Alerts below are blind for this LB until this clears."
+
+  - name: lb-services
+    rules:
+      - alert: LBServiceNotActive
+        expr: node_systemd_unit_state{job="lb-node", name=~"(haproxy|keepalived)\\.service", state="active"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.name }} is not active on {{ $labels.instance }}"
+          description: "One LB has lost {{ $labels.name }}. The pair has no redundancy until it is back. Check journalctl -u {{ $labels.name }}."
+
+  - name: keepalived
+    rules:
+      # A node counts as MASTER only while keepalived is actually running there,
+      # so a stale metrics file from a killed keepalived cannot hide a problem.
+      - record: lb:keepalived_vrrp_master:live
+        expr: |
+          keepalived_vrrp_master{job="lb-node"}
+            * on (instance) group_left ()
+          node_systemd_unit_state{job="lb-node", name="keepalived.service", state="active"}
+
+      - alert: KeepalivedNoMaster
+        expr: sum by (vrrp_instance) (lb:keepalived_vrrp_master:live) == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "No LB holds the VIP for {{ $labels.vrrp_instance }}"
+          description: "Neither LB is VRRP MASTER. api, api-int and *.apps are unreachable through the VIP."
+
+      - alert: KeepalivedSplitBrain
+        expr: sum by (vrrp_instance) (lb:keepalived_vrrp_master:live) > 1
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Both LBs claim the VIP for {{ $labels.vrrp_instance }}"
+          description: "VRRP adverts are not reaching one side (firewall, network partition, or mismatched virtual_router_id / auth). Clients will flap between LBs."
+
+      - alert: KeepalivedFault
+        expr: keepalived_vrrp_state_info{job="lb-node", state="FAULT"} == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "keepalived is in FAULT on {{ $labels.instance }}"
+          description: "A tracked script or interface failed on this LB, so it cannot take over the VIP."
+
+      - alert: KeepalivedFailover
+        expr: changes(keepalived_vrrp_master{job="lb-node"}[10m]) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "The VIP moved ({{ $labels.instance }} changed VRRP role)"
+          description: "Expected during failover tests. Outside a test, find out why the previous holder lost the VIP."
+
+      - alert: KeepalivedFlapping
+        expr: changes(keepalived_vrrp_master{job="lb-node"}[15m]) > 4
+        labels:
+          severity: warning
+        annotations:
+          summary: "The VIP is flapping on {{ $labels.instance }}"
+          description: "More than 4 VRRP role changes in 15 minutes. Check the haproxy track script and the network between the LBs."
+
+  - name: haproxy
+    rules:
+      - alert: HAProxyBackendDown
+        expr: haproxy_backend_active_servers{job="haproxy"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "HAProxy backend {{ $labels.proxy }} has no healthy servers on {{ $labels.instance }}"
+          description: "Every server in {{ $labels.proxy }} fails its health check. If this is the VIP holder, that service is down for clients."
+
+      # Excludes the bootstrap node, which is only in the API/MCS backends
+      # during installation.
+      - alert: HAProxyServerDown
+        expr: haproxy_server_status{job="haproxy", state="UP", server!~"bootstrap.*"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.server }} is not UP in {{ $labels.proxy }} on {{ $labels.instance }}"
+          description: "The node or its API server / MCS / router fails the HAProxy health check. Check the node with oc get nodes and lb-status.sh."
+
+      - alert: HAProxyServerFlapping
+        expr: increase(haproxy_server_check_up_down_total{job="haproxy"}[15m]) > 4
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.server }} in {{ $labels.proxy }} is flapping"
+          description: "Health check went UP/DOWN more than 4 times in 15 minutes on {{ $labels.instance }}."
+
+      - alert: HAProxyBackendConnectionErrors
+        expr: rate(haproxy_backend_connection_errors_total{job="haproxy"}[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Connection errors to backend {{ $labels.proxy }} on {{ $labels.instance }}"
+          description: "More than 1 failed connection per second to {{ $labels.proxy }} for 5 minutes."
+
+      - alert: HAProxyFrontendSessionsNearLimit
+        expr: |
+          haproxy_frontend_current_sessions{job="haproxy"}
+            / (haproxy_frontend_limit_sessions{job="haproxy"} > 0) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frontend {{ $labels.proxy }} on {{ $labels.instance }} is above 80% of maxconn"
+          description: "New connections will queue or be refused once the limit is reached. Raise maxconn or add capacity."

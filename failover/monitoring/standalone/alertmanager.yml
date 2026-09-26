@@ -1,0 +1,23 @@
+# Minimal Alertmanager config. Replace the receiver with your own channel
+# (email, Slack, PagerDuty, a webhook). As written, alerts are only visible in
+# the Alertmanager UI on :9093.
+route:
+  receiver: default
+  group_by: [alertname, vrrp_instance, proxy]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="info"]
+      receiver: default
+      repeat_interval: 24h
+
+receivers:
+  - name: default
+    # webhook_configs:
+    #   - url: http://example.internal/alert-hook
+
+inhibit_rules:
+  # When no LB holds the VIP, the per-endpoint probe alerts add nothing.
+  - source_matchers: [alertname="KeepalivedNoMaster"]
+    target_matchers: [alertname="VIPEndpointDown"]
