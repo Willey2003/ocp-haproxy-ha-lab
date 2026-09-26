@@ -1,0 +1,97 @@
+# Points user workload monitoring at the two load balancers, which live outside
+# the cluster. The Services have no selector; the Endpoints list the LB IPs.
+# Edit the IPs to match lab.env (LB1, LB2).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lb-monitoring
+  labels:
+    openshift.io/user-monitoring: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: haproxy
+  namespace: lb-monitoring
+  labels:
+    app: lb-haproxy
+spec:
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 8405
+      targetPort: 8405
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: haproxy
+  namespace: lb-monitoring
+  labels:
+    app: lb-haproxy
+subsets:
+  - addresses:
+      - ip: 192.168.100.11
+      - ip: 192.168.100.12
+    ports:
+      - name: metrics
+        port: 8405
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lb-node
+  namespace: lb-monitoring
+  labels:
+    app: lb-node
+spec:
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: lb-node
+  namespace: lb-monitoring
+  labels:
+    app: lb-node
+subsets:
+  - addresses:
+      - ip: 192.168.100.11
+      - ip: 192.168.100.12
+    ports:
+      - name: metrics
+        port: 9100
+---
+# The job label defaults to the Service name, so these scrape as job="haproxy"
+# and job="lb-node", matching rules/lb.rules.yml.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: haproxy
+  namespace: lb-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: lb-haproxy
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: lb-node
+  namespace: lb-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: lb-node
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s

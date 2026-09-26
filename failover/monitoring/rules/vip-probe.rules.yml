@@ -1,0 +1,31 @@
+# Outside-in checks of the VIP, from a blackbox_exporter that runs outside the
+# cluster (standalone/ setup only). These fire even when the whole cluster, and
+# with it the in-cluster Prometheus, is unreachable.
+groups:
+  - name: vip-probe
+    rules:
+      - alert: VIPEndpointDown
+        expr: probe_success{job="vip-probe"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.endpoint }} is unreachable through the VIP"
+          description: "The blackbox probe of {{ $labels.instance }} has failed for 30s. Clients cannot reach this endpoint."
+
+      - alert: VIPEndpointSlow
+        expr: probe_duration_seconds{job="vip-probe"} > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.endpoint }} answers slowly through the VIP"
+          description: "Probe takes {{ $value | humanizeDuration }} to complete."
+
+      - alert: ClusterCertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry{job="vip-probe"} - time()) / 86400 < 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Certificate served at {{ $labels.endpoint }} expires in {{ $value | humanize }} days"

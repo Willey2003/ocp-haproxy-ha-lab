@@ -1,0 +1,32 @@
+modules:
+  # /readyz and /healthz are served anonymously; the cluster CA is private,
+  # so verification is skipped. Mount the cluster CA and set ca_file to verify.
+  http_readyz:
+    prober: http
+    timeout: 3s
+    http:
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp: ["ok"]
+      tls_config:
+        insecure_skip_verify: true
+  http_2xx_nobody:
+    prober: http
+    timeout: 3s
+    http:
+      valid_status_codes: [200, 204]
+      tls_config:
+        insecure_skip_verify: true
+  http_2xx_insecure:
+    prober: http
+    timeout: 3s
+    http:
+      valid_status_codes: [200]
+      tls_config:
+        insecure_skip_verify: true
+  tcp_tls:
+    prober: tcp
+    timeout: 3s
+    tcp:
+      tls: true
+      tls_config:
+        insecure_skip_verify: true
