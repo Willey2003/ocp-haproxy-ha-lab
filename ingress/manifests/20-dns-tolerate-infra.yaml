@@ -1,0 +1,14 @@
+# OPTIONAL merge patch for the cluster DNS operator.
+# The dns-default DaemonSet only tolerates the master taint by default, so
+# once infra nodes are tainted it stops running CoreDNS there. Pods on infra
+# nodes still resolve names through the DNS service, so this is optional;
+# apply it if you want a local CoreDNS on every node.
+#   oc patch dns.operator/default --type=merge \
+#     --patch-file=manifests/20-dns-tolerate-infra.yaml
+spec:
+  nodePlacement:
+    tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+      - key: node-role.kubernetes.io/infra
+        operator: Exists
